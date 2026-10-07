@@ -8,7 +8,6 @@ import {
   type StyleSpecification,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
-import styles from './Map.module.css';
 
 setWorkerUrl(
   new URL(
@@ -42,14 +41,14 @@ function createSatelliteStyle(): StyleSpecification {
 
   if (TOMTOM_API_KEY) {
     sources.satellite = {
-        type: 'raster' as const,
-        tiles: [
-          `https://api.tomtom.com/maps/orbis/display/satellite/tile/{z}/{x}/{y}?apiVersion=2&key=${encodeURIComponent(TOMTOM_API_KEY)}&style=main`,
-        ],
-        tileSize: 256,
-        maxzoom: 19,
-        attribution: '&copy; TomTom',
-      };
+      type: 'raster' as const,
+      tiles: [
+        `https://api.tomtom.com/maps/orbis/display/satellite/tile/{z}/{x}/{y}?apiVersion=2&key=${encodeURIComponent(TOMTOM_API_KEY)}&style=main`,
+      ],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: '&copy; TomTom',
+    };
     layers.push({
       id: 'satellite',
       type: 'raster',
@@ -79,13 +78,13 @@ function createTrafficStyle(): StyleSpecification {
 
   if (TOMTOM_API_KEY) {
     sources['traffic-basemap'] = {
-          type: 'raster',
-          tiles: [
-            `https://api.tomtom.com/maps/orbis/display/raster/tile/{z}/{x}/{y}?apiVersion=2&key=${encodeURIComponent(TOMTOM_API_KEY)}&style=street-light&tileSize=512`,
-          ],
-          tileSize: 512,
-          attribution: '&copy; TomTom',
-        };
+      type: 'raster',
+      tiles: [
+        `https://api.tomtom.com/maps/orbis/display/raster/tile/{z}/{x}/{y}?apiVersion=2&key=${encodeURIComponent(TOMTOM_API_KEY)}&style=street-light&tileSize=512`,
+      ],
+      tileSize: 512,
+      attribution: '&copy; TomTom',
+    };
     sources['traffic-flow'] = {
       type: 'raster',
       tiles: [
@@ -164,14 +163,36 @@ export default function Map() {
   };
 
   return (
-    <main className={styles.mapShell}>
-      <div ref={mapContainer} className={styles.map} />
+    <main
+      className="relative h-dvh min-h-[420px] w-full overflow-hidden bg-slate-200"
+      style={{
+        position: 'relative',
+        width: '100%',
+        height: '100dvh',
+        minHeight: '420px',
+        overflow: 'hidden',
+        background: '#dce4e8',
+      }}
+    >
+      <div
+        ref={mapContainer}
+        className="absolute inset-0"
+        style={{ position: 'absolute', inset: 0 }}
+      />
 
-      <div className={styles.modePanel}>
-        <div className={styles.modeSwitcher} role="group" aria-label="Map mode">
+      <div className="pointer-events-none absolute top-4 left-1/2 z-10 flex w-[min(360px,calc(100%-32px))] -translate-x-1/2 flex-col items-center gap-2 max-[480px]:top-2.5 max-[480px]:w-[calc(100%-20px)]">
+        <div
+          className="pointer-events-auto grid w-full grid-cols-2 rounded-[14px] border border-white/40 bg-gray-900/90 p-1 shadow-xl backdrop-blur-md"
+          role="group"
+          aria-label="Map mode"
+        >
           <button
             type="button"
-            className={mode === 'satellite' ? styles.activeMode : styles.modeButton}
+            className={`min-h-10 cursor-pointer rounded-[10px] border-0 text-sm font-bold tracking-wide transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-sky-400 motion-reduce:transition-none ${
+              mode === 'satellite'
+                ? 'bg-white text-gray-900 shadow-md'
+                : 'bg-transparent text-gray-300 hover:bg-white/10 hover:text-white'
+            }`}
             aria-pressed={mode === 'satellite'}
             onClick={() => changeMode('satellite')}
           >
@@ -179,7 +200,11 @@ export default function Map() {
           </button>
           <button
             type="button"
-            className={mode === 'traffic' ? styles.activeMode : styles.modeButton}
+            className={`min-h-10 cursor-pointer rounded-[10px] border-0 text-sm font-bold tracking-wide transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-sky-400 motion-reduce:transition-none ${
+              mode === 'traffic'
+                ? 'bg-white text-gray-900 shadow-md'
+                : 'bg-transparent text-gray-300 hover:bg-white/10 hover:text-white'
+            }`}
             aria-pressed={mode === 'traffic'}
             onClick={() => changeMode('traffic')}
           >
@@ -188,7 +213,10 @@ export default function Map() {
         </div>
 
         {(providerError || !TOMTOM_API_KEY) && (
-          <p className={styles.keyNotice} role="status">
+          <p
+            className="pointer-events-auto m-0 rounded-lg bg-amber-900/95 px-3 py-2 text-center text-xs leading-snug text-amber-100 shadow-lg"
+            role="status"
+          >
             {providerError ??
               'Add NEXT_PUBLIC_TOMTOM_API_KEY for satellite imagery and live traffic.'}
           </p>
