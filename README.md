@@ -16,6 +16,20 @@ bun dev
 
 Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
 
+### Live traffic
+
+To enable satellite imagery and the live traffic overlay, create `.env.local`
+in the project root and add a TomTom API key:
+
+```bash
+NEXT_PUBLIC_TOMTOM_API_KEY=your_tomtom_api_key
+```
+
+Without a key, both modes fall back to a standard road map so the map never
+renders blank. Restart the development server after adding or changing the
+key. The key is sent to the browser for tile requests, so restrict it to your
+deployed domains in the TomTom developer dashboard.
+
 You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
 
 This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
