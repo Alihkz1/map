@@ -27,7 +27,7 @@ const fallbackBasemap = {
   attribution: '&copy; OpenStreetMap contributors',
 };
 
-function createSatelliteStyle(): StyleSpecification {
+function createMapStyle(): StyleSpecification {
   const sources: StyleSpecification['sources'] = {
     fallback: fallbackBasemap,
   };
@@ -36,6 +36,9 @@ function createSatelliteStyle(): StyleSpecification {
       id: 'fallback',
       type: 'raster',
       source: 'fallback',
+      paint: {
+        'raster-fade-duration': 0,
+      },
     },
   ];
 
@@ -49,34 +52,6 @@ function createSatelliteStyle(): StyleSpecification {
       maxzoom: 19,
       attribution: '&copy; TomTom',
     };
-    layers.push({
-      id: 'satellite',
-      type: 'raster',
-      source: 'satellite',
-    });
-  }
-
-  return {
-    version: 8,
-    sources,
-    layers,
-  };
-}
-
-function createTrafficStyle(): StyleSpecification {
-  const trafficLayers: StyleSpecification['layers'] = [
-    {
-      id: 'fallback',
-      type: 'raster',
-      source: 'fallback',
-    },
-  ];
-
-  const sources: StyleSpecification['sources'] = {
-    fallback: fallbackBasemap,
-  };
-
-  if (TOMTOM_API_KEY) {
     sources['traffic-basemap'] = {
       type: 'raster',
       tiles: [
@@ -94,17 +69,38 @@ function createTrafficStyle(): StyleSpecification {
       attribution: '&copy; TomTom',
     };
 
-    trafficLayers.push({
+    layers.push({
+      id: 'satellite',
+      type: 'raster',
+      source: 'satellite',
+      layout: {
+        visibility: 'visible',
+      },
+      paint: {
+        'raster-fade-duration': 0,
+      },
+    });
+    layers.push({
       id: 'traffic-basemap',
       type: 'raster',
       source: 'traffic-basemap',
+      layout: {
+        visibility: 'none',
+      },
+      paint: {
+        'raster-fade-duration': 0,
+      },
     });
-    trafficLayers.push({
+    layers.push({
       id: 'traffic-flow',
       type: 'raster',
       source: 'traffic-flow',
+      layout: {
+        visibility: 'none',
+      },
       paint: {
         'raster-opacity': 0.9,
+        'raster-fade-duration': 0,
       },
     });
   }
@@ -112,7 +108,7 @@ function createTrafficStyle(): StyleSpecification {
   return {
     version: 8,
     sources,
-    layers: trafficLayers,
+    layers,
   };
 }
 
@@ -127,9 +123,10 @@ export default function Map() {
 
     const map = new MapLibreMap({
       container: mapContainer.current,
-      style: createSatelliteStyle(),
+      style: createMapStyle(),
       center: [51.389, 35.6892],
       zoom: 10,
+      fadeDuration: 0,
     });
 
     map.addControl(new NavigationControl(), 'bottom-right');
@@ -155,11 +152,23 @@ export default function Map() {
 
     setProviderError(null);
     setMode(nextMode);
-    mapInstance.current?.setStyle(
-      nextMode === 'satellite'
-        ? createSatelliteStyle()
-        : createTrafficStyle(),
-    );
+
+    const map = mapInstance.current;
+    if (!map) return;
+
+    const satelliteVisibility =
+      nextMode === 'satellite' ? 'visible' : 'none';
+    const trafficVisibility = nextMode === 'traffic' ? 'visible' : 'none';
+
+    if (map.getLayer('satellite')) {
+      map.setLayoutProperty('satellite', 'visibility', satelliteVisibility);
+    }
+
+    for (const layerId of ['traffic-basemap', 'traffic-flow']) {
+      if (map.getLayer(layerId)) {
+        map.setLayoutProperty(layerId, 'visibility', trafficVisibility);
+      }
+    }
   };
 
   return (
@@ -196,7 +205,7 @@ export default function Map() {
             aria-pressed={mode === 'satellite'}
             onClick={() => changeMode('satellite')}
           >
-            Satellite
+            Mode 1
           </button>
           <button
             type="button"
@@ -208,7 +217,7 @@ export default function Map() {
             aria-pressed={mode === 'traffic'}
             onClick={() => changeMode('traffic')}
           >
-            Traffic
+            Mode 2
           </button>
         </div>
 
