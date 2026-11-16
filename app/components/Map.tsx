@@ -6,6 +6,7 @@ import {
   NavigationControl,
   setWorkerUrl,
   type StyleSpecification,
+  type RasterTileSource,
 } from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
@@ -115,122 +116,79 @@ function createMapStyle(): StyleSpecification {
 export default function Map() {
   const mapContainer = useRef<HTMLDivElement>(null);
   const mapInstance = useRef<MapLibreMap>(null);
+  const requestedMode = useRef<MapMode>('satellite');
+  const styleReady = useRef(false);
+  const failedSources = useRef(new Set<string>());
   const [mode, setMode] = useState<MapMode>('satellite');
-  const [providerError, setProviderError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  function applyMode(map: MapLibreMap) {
+    if (!styleReady.current) return;
+    for (const id of ['satellite', 'traffic-basemap', 'traffic-flow']) {
+      const visible = (requestedMode.current === 'satellite' ? id === 'satellite' : id !== 'satellite') && !failedSources.current.has(id);
+      if (map.getLayer(id)) map.setLayoutProperty(id, 'visibility', visible ? 'visible' : 'none');
+    }
+    const affected = requestedMode.current === 'satellite' ? ['satellite'] : ['traffic-basemap', 'traffic-flow'];
+    setError(affected.some(id => failedSources.current.has(id)) ? 'This map layer could not be loaded. Check your connection or TomTom API access. The street map is still available.' : null);
+  }
 
   useEffect(() => {
     if (!mapContainer.current) return;
-
-    const map = new MapLibreMap({
-      container: mapContainer.current,
-      style: createMapStyle(),
-      center: [51.389, 35.6892],
-      zoom: 10,
-      fadeDuration: 0,
-    });
-
-    map.addControl(new NavigationControl(), 'bottom-right');
-    map.on('error', (event) => {
-      const message = event.error?.message ?? '';
-
-      if (message.includes('api.tomtom.com') && message.includes('401')) {
-        setProviderError(
-          'The configured TomTom API key was rejected. Showing the standard map instead.',
-        );
-      }
-    });
+    styleReady.current = false;
+    failedSources.current.clear();
+    const map = new MapLibreMap({ container: mapContainer.current, style: createMapStyle(), center: [51.389, 35.6892], zoom: 11, fadeDuration: 0, attributionControl: { compact: true } });
     mapInstance.current = map;
-
-    return () => {
-      mapInstance.current = null;
-      map.remove();
-    };
+    const observer = new ResizeObserver(() => map.resize());
+    observer.observe(mapContainer.current);
+    map.addControl(new NavigationControl({ showCompass: false }), 'top-right');
+    map.on('style.load', () => { styleReady.current = true; applyMode(map); });
+    map.on('idle', () => setLoading(false));
+    map.on('error', event => {
+      const sourceId = (event as typeof event & { sourceId?: string }).sourceId;
+      if (sourceId && ['satellite', 'traffic-basemap', 'traffic-flow'].includes(sourceId)) {
+        failedSources.current.add(sourceId);
+        applyMode(map);
+      } else {
+        setError('Some map tiles could not be loaded. Check your connection and map provider access.');
+      }
+      setLoading(false);
+    });
+    return () => { observer.disconnect(); styleReady.current = false; mapInstance.current = null; map.remove(); };
   }, []);
 
-  const changeMode = (nextMode: MapMode) => {
-    if (nextMode === mode) return;
-
-    setProviderError(null);
-    setMode(nextMode);
-
+  function changeMode(next: MapMode) {
+    requestedMode.current = next;
+    setMode(next);
     const map = mapInstance.current;
-    if (!map) return;
-
-    const satelliteVisibility =
-      nextMode === 'satellite' ? 'visible' : 'none';
-    const trafficVisibility = nextMode === 'traffic' ? 'visible' : 'none';
-
-    if (map.getLayer('satellite')) {
-      map.setLayoutProperty('satellite', 'visibility', satelliteVisibility);
+    if (map) { setLoading(!map.areTilesLoaded()); applyMode(map); }
+  }
+  function retry() {
+    const map = mapInstance.current;
+    if (!map || !styleReady.current) return;
+    failedSources.current.clear();
+    for (const [id, specification] of Object.entries(createMapStyle().sources)) {
+      if (specification.type === 'raster' && specification.tiles) (map.getSource(id) as RasterTileSource | undefined)?.setTiles(specification.tiles);
     }
+    setLoading(true);
+    applyMode(map);
+  }
 
-    for (const layerId of ['traffic-basemap', 'traffic-flow']) {
-      if (map.getLayer(layerId)) {
-        map.setLayoutProperty(layerId, 'visibility', trafficVisibility);
-      }
-    }
-  };
-
-  return (
-    <main
-      className="relative h-dvh min-h-105 w-full overflow-hidden bg-slate-200"
-      style={{
-        position: 'relative',
-        width: '100%',
-        height: '100dvh',
-        minHeight: '420px',
-        overflow: 'hidden',
-        background: '#dce4e8',
-      }}
-    >
-      <div
-        ref={mapContainer}
-        className="absolute inset-0"
-        style={{ position: 'absolute', inset: 0 }}
-      />
-
-      <div className="pointer-events-none absolute top-4 left-1/2 z-10 flex w-[min(360px,calc(100%-32px))] -translate-x-1/2 flex-col items-center gap-2 max-[480px]:top-2.5 max-[480px]:w-[calc(100%-20px)]">
-        <div
-          className="pointer-events-auto grid w-full grid-cols-2 rounded-[14px] border border-white/40 bg-gray-900/90 p-1 shadow-xl backdrop-blur-md"
-          role="group"
-          aria-label="Map mode"
-        >
-          <button
-            type="button"
-            className={`min-h-10 cursor-pointer rounded-[10px] border-0 text-sm font-bold tracking-wide transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-sky-400 motion-reduce:transition-none ${
-              mode === 'satellite'
-                ? 'bg-white text-gray-900 shadow-md'
-                : 'bg-transparent text-gray-300 hover:bg-white/10 hover:text-white'
-            }`}
-            aria-pressed={mode === 'satellite'}
-            onClick={() => changeMode('satellite')}
-          >
-            Mode 1
-          </button>
-          <button
-            type="button"
-            className={`min-h-10 cursor-pointer rounded-[10px] border-0 text-sm font-bold tracking-wide transition focus-visible:outline-3 focus-visible:outline-offset-2 focus-visible:outline-sky-400 motion-reduce:transition-none ${
-              mode === 'traffic'
-                ? 'bg-white text-gray-900 shadow-md'
-                : 'bg-transparent text-gray-300 hover:bg-white/10 hover:text-white'
-            }`}
-            aria-pressed={mode === 'traffic'}
-            onClick={() => changeMode('traffic')}
-          >
-            Mode 2
-          </button>
+  return <main className="map-stage">
+    <section className="phone" aria-label="iPhone 18 style map preview">
+      <span className="phone-key phone-key-silent" aria-hidden="true" /><span className="phone-key phone-key-volume" aria-hidden="true" /><span className="phone-key phone-key-power" aria-hidden="true" />
+      <div className="phone-screen">
+        <div ref={mapContainer} className="phone-map" aria-label={`${mode === 'satellite' ? 'Satellite' : 'Traffic'} map of Tehran`} />
+        <div className="phone-status" aria-hidden="true"><span>9:41</span><span className="phone-island"><i /></span><span className="phone-status-icons"><svg width="16" height="13" viewBox="0 0 16 13" fill="currentColor"><rect x="0" y="9" width="3" height="4" rx=".7"/><rect x="4" y="6" width="3" height="7" rx=".7"/><rect x="8" y="3" width="3" height="10" rx=".7"/><rect x="12" width="3" height="13" rx=".7"/></svg><span className="phone-battery" /></span></div>
+        {(error || !TOMTOM_API_KEY) && <div className="map-notice" role="status">{error || 'A TomTom API key is required for satellite imagery and live traffic.'}{error && <button type="button" onClick={retry}>Try again</button>}</div>}
+        <div className="map-dock">
+          <div className="map-modes" role="group" aria-label="Map mode">
+            <button type="button" aria-pressed={mode === 'satellite'} disabled={!TOMTOM_API_KEY} onClick={() => changeMode('satellite')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="m12 3 9 5-9 5-9-5 9-5Zm-9 9 9 5 9-5M3 16l9 5 9-5" strokeLinecap="round" strokeLinejoin="round"/></svg>Satellite</button>
+            <button type="button" aria-pressed={mode === 'traffic'} disabled={!TOMTOM_API_KEY} onClick={() => changeMode('traffic')}><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.6" aria-hidden="true"><path d="M8 3H5v18h3M16 3h3v18h-3M12 4v3m0 4v3m0 4v3" strokeLinecap="round" strokeLinejoin="round"/></svg>Traffic</button>
+          </div>
         </div>
-
-        {(providerError || !TOMTOM_API_KEY) && (
-          <p
-            className="pointer-events-auto m-0 rounded-lg bg-amber-900/95 px-3 py-2 text-center text-xs leading-snug text-amber-100 shadow-lg"
-            role="status"
-          >
-            {providerError ??
-              'Add NEXT_PUBLIC_TOMTOM_API_KEY for satellite imagery and live traffic.'}
-          </p>
-        )}
+        <div className="phone-home" aria-hidden="true" />
       </div>
-    </main>
-  );
+    </section>
+  </main>;
 }
