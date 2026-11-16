@@ -173,7 +173,7 @@ export default function Map() {
 
   return (
     <main
-      className="relative h-dvh min-h-[420px] w-full overflow-hidden bg-slate-200"
+      className="relative h-dvh min-h-105 w-full overflow-hidden bg-slate-200"
       style={{
         position: 'relative',
         width: '100%',
